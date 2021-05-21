@@ -60,6 +60,7 @@
 #include "mclean_extreme.h"
 #include "liquivision_lynx.h"
 #include "sporasub_sp2.h"
+#include "deepsix_excursion.h"
 
 #include "context-private.h"
 #include "parser-private.h"
@@ -184,6 +185,9 @@ dc_parser_new_internal (dc_parser_t **out, dc_context_t *context, dc_family_t fa
 	case DC_FAMILY_SPORASUB_SP2:
 		rc = sporasub_sp2_parser_create (&parser, context);
 		break;
+    case DC_FAMILY_DEEPSIX:
+        rc = deepsix_parser_create (&parser, context);
+        break;
 	default:
 		return DC_STATUS_INVALIDARGS;
 	}

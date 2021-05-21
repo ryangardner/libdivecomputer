@@ -265,6 +265,13 @@ array_uint16_le (const unsigned char data[])
 	       ((unsigned int) data[1] <<  8);
 }
 
+void
+array_uint16_le_set (unsigned char data[], const unsigned short input)
+{
+    data[0] = input & 0xFF;
+    data[1] = (input >>  8) & 0xFF;
+}
+
 unsigned char
 bcd2dec (unsigned char value)
 {

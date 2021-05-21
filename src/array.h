@@ -85,6 +85,10 @@ array_uint16_be (const unsigned char data[]);
 unsigned short
 array_uint16_le (const unsigned char data[]);
 
+void
+array_uint16_le_set (unsigned char data[], const unsigned short input);
+
+
 unsigned char
 bcd2dec (unsigned char value);
 
