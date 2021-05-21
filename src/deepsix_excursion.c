@@ -395,6 +395,7 @@ deepsix_download_dive(deepsix_device_t *device, unsigned short nr, dc_dive_callb
 
     status = deepsix_recv_bulk(device, nr, profile+EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN, profile_len);
     memset(header + header_len, 0, 256 - header_len);
+    memcpy(header, profile, EXCURSION_HDR_SIZE);
 
     /* The header is the fingerprint. If we've already seen this header, we're done */
     if (memcmp(header, device->fingerprint, sizeof (device->fingerprint)) == 0)
