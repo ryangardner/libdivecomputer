@@ -35,7 +35,7 @@
 
 struct msg_desc;
 
-typedef struct deepsix_parser_t {
+typedef struct deepsix_excursion_parser_t {
     dc_parser_t base;
 
     dc_sample_callback_t callback;
@@ -49,39 +49,39 @@ typedef struct deepsix_parser_t {
     unsigned int surface_atm;
     char firmware_version[6];
 
-} deepsix_parser_t;
+} deepsix_excursion_parser_t;
 
-static dc_status_t deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size);
-static dc_status_t deepsix_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime);
-static dc_status_t deepsix_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned int flags, void *value);
-static dc_status_t deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata);
+static dc_status_t deepsix_excursion_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size);
+static dc_status_t deepsix_excursion_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime);
+static dc_status_t deepsix_excursion_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned int flags, void *value);
+static dc_status_t deepsix_excursion_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata);
 
 static const dc_parser_vtable_t deepsix_parser_vtable = {
-        sizeof(deepsix_parser_t),
+        sizeof(deepsix_excursion_parser_t),
         DC_FAMILY_DEEPSIX,
-        deepsix_parser_set_data, /* set_data */
-        deepsix_parser_get_datetime, /* datetime */
-        deepsix_parser_get_field, /* fields */
-        deepsix_parser_samples_foreach, /* samples_foreach */
+        deepsix_excursion_parser_set_data, /* set_data */
+        deepsix_excursion_parser_get_datetime, /* datetime */
+        deepsix_excursion_parser_get_field, /* fields */
+        deepsix_excursion_parser_samples_foreach, /* samples_foreach */
         NULL /* destroy */
 };
 
 dc_status_t
-deepsix_excursion_parser_create (dc_parser_t **parser, dc_context_t *context)
+deepsix_excursion_parser_create (dc_parser_t **out, dc_context_t *context)
 {
-    deepsix_parser_t *parser = NULL;
+    deepsix_excursion_parser_t *parser = NULL;
 
-    if (parser == NULL)
+    if (out == NULL)
         return DC_STATUS_INVALIDARGS;
 
     // Allocate memory.
-    parser = (deepsix_parser_t *) dc_parser_allocate (context, &deepsix_parser_vtable);
+    parser = (deepsix_excursion_parser_t *) dc_parser_allocate (context, &deepsix_parser_vtable);
     if (parser == NULL) {
         ERROR (context, "Failed to allocate memory.");
         return DC_STATUS_NOMEMORY;
     }
 
-    *parser = (dc_parser_t *) parser;
+    *out = (dc_parser_t *) parser;
 
     return DC_STATUS_SUCCESS;
 }
@@ -100,9 +100,9 @@ pressure_to_depth(unsigned int mbar, unsigned int surface_pressure)
 }
 
 static dc_status_t
-deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size)
+deepsix_excursion_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size)
 {
-    deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
+    deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
     const unsigned char *hdr = data;
     dc_gasmix_t gasmix = {0, };
 
@@ -129,9 +129,9 @@ deepsix_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsig
 }
 
 static dc_status_t
-deepsix_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime)
+deepsix_excursion_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime)
 {
-    deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
+    deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
     const unsigned char *data = deepsix->base.data;
     int len = deepsix->base.size;
 
@@ -149,9 +149,9 @@ deepsix_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime)
 }
 
 static dc_status_t
-deepsix_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned int flags, void *value)
+deepsix_excursion_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned int flags, void *value)
 {
-    deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
+    deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
 
     // this is on the subsurface fork but not the mainline one
 //    dc_field_string_t *string = (dc_field_string_t *) value;
@@ -212,9 +212,9 @@ deepsix_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned 
 }
 
 static dc_status_t
-deepsix_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata)
+deepsix_excursion_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata)
 {
-    deepsix_parser_t *deepsix = (deepsix_parser_t *) abstract;
+    deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
     const unsigned char *data = deepsix->base.data;
     int len = deepsix->base.size, i = 0;
 
