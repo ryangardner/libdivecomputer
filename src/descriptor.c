@@ -422,7 +422,7 @@ static const dc_descriptor_t g_descriptors[] = {
 	/* Sporasub */
 	{"Sporasub", "SP2", DC_FAMILY_SPORASUB_SP2, 0, DC_TRANSPORT_SERIAL, NULL},
 	/* DeepSix */
-    {"Deep Six", "Excursion", DC_FAMILY_DEEPSIX, 0, DC_TRANSPORT_BLE, dc_filter_deepsix },
+	{"Deep Six", "Excursion", DC_FAMILY_DEEPSIX, 0, DC_TRANSPORT_BLE, dc_filter_deepsix },
 };
 
 static int
@@ -723,15 +723,15 @@ static int dc_filter_atomic (dc_transport_t transport, const void *userdata, voi
 
 static int dc_filter_deepsix (dc_transport_t transport, const void *userdata, void *params)
 {
-    static const char * const bluetooth[] = {
-            "EXCURSION",
-    };
+	static const char * const bluetooth[] = {
+			"EXCURSION",
+	};
 
-    if (transport == DC_TRANSPORT_BLE) {
-        return DC_FILTER_INTERNAL (userdata, bluetooth, 0, dc_match_name);
-    }
+	if (transport == DC_TRANSPORT_BLE) {
+		return DC_FILTER_INTERNAL (userdata, bluetooth, 0, dc_match_name);
+	}
 
-    return 1;
+	return 1;
 }
 
 
