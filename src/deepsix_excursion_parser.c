@@ -67,11 +67,11 @@ static const dc_parser_vtable_t deepsix_parser_vtable = {
 };
 
 dc_status_t
-deepsix_parser_create (dc_parser_t **out, dc_context_t *context)
+deepsix_excursion_parser_create (dc_parser_t **parser, dc_context_t *context)
 {
     deepsix_parser_t *parser = NULL;
 
-    if (out == NULL)
+    if (parser == NULL)
         return DC_STATUS_INVALIDARGS;
 
     // Allocate memory.
@@ -81,7 +81,7 @@ deepsix_parser_create (dc_parser_t **out, dc_context_t *context)
         return DC_STATUS_NOMEMORY;
     }
 
-    *out = (dc_parser_t *) parser;
+    *parser = (dc_parser_t *) parser;
 
     return DC_STATUS_SUCCESS;
 }

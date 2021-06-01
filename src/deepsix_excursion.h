@@ -32,10 +32,10 @@ extern "C" {
 #endif /* __cplusplus */
 
 dc_status_t
-deepsix_device_open (dc_device_t **device, dc_context_t *context, dc_iostream_t *iostream);
+deepsix_excursion_device_open (dc_device_t **out, dc_context_t *context, dc_iostream_t *iostream);
 
 dc_status_t
-deepsix_parser_create (dc_parser_t **parser, dc_context_t *context);
+deepsix_excursion_parser_create (dc_parser_t **parser, dc_context_t *context);
 
 #define EXCURSION_HDR_SIZE	156
 #define EXCURSION_SERIAL_NUMBER_LEN 11

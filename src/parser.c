@@ -186,7 +186,7 @@ dc_parser_new_internal (dc_parser_t **out, dc_context_t *context, dc_family_t fa
 		rc = sporasub_sp2_parser_create (&parser, context);
 		break;
     case DC_FAMILY_DEEPSIX:
-        rc = deepsix_parser_create (&parser, context);
+        rc = deepsix_excursion_parser_create(&parser, context);
         break;
 	default:
 		return DC_STATUS_INVALIDARGS;

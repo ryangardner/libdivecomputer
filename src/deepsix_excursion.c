@@ -60,7 +60,7 @@ typedef struct deepsix_device_t {
 
 static const unsigned char ENDIAN_BIT = 0x01;
 
-static dc_status_t deepsix_device_set_fingerprint (dc_device_t *abstract, const unsigned char data[], unsigned int size);
+static dc_status_t deepsix_excursion_device_set_fingerprint (dc_device_t *abstract, const unsigned char *data, unsigned int size);
 static dc_status_t deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void *userdata);
 static dc_status_t deepsix_excursion_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime);
 static dc_status_t deepsix_device_close (dc_device_t *abstract);
@@ -71,7 +71,7 @@ static dc_status_t get_serial_number(deepsix_device_t *device, char* serial_numb
 static const dc_device_vtable_t deepsix_device_vtable = {
         sizeof(deepsix_device_t),
         DC_FAMILY_DEEPSIX,
-        deepsix_device_set_fingerprint, /* set_fingerprint */
+        deepsix_excursion_device_set_fingerprint, /* set_fingerprint */
         NULL, /* read */
         NULL, /* write */
         NULL, /* dump */
@@ -540,7 +540,7 @@ deepsix_recv_bulk(deepsix_device_t *device, unsigned short dive_number, unsigned
 }
 
 dc_status_t
-deepsix_device_open (dc_device_t **out, dc_context_t *context, dc_iostream_t *iostream)
+deepsix_excursion_device_open (dc_device_t **out, dc_context_t *context, dc_iostream_t *iostream)
 {
 	dc_status_t status = DC_STATUS_SUCCESS;
 	deepsix_device_t *device = NULL;
@@ -583,7 +583,7 @@ deepsix_device_open (dc_device_t **out, dc_context_t *context, dc_iostream_t *io
 }
 
 static dc_status_t
-deepsix_device_set_fingerprint (dc_device_t *abstract, const unsigned char data[], unsigned int size)
+deepsix_excursion_device_set_fingerprint (dc_device_t *abstract, const unsigned char *data, unsigned int size)
 {
     deepsix_device_t *device = (deepsix_device_t *)abstract;
 
