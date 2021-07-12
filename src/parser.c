@@ -185,7 +185,7 @@ dc_parser_new_internal (dc_parser_t **out, dc_context_t *context, dc_family_t fa
 	case DC_FAMILY_SPORASUB_SP2:
 		rc = sporasub_sp2_parser_create (&parser, context);
 		break;
-    case DC_FAMILY_DEEPSIX:
+    case DC_FAMILY_DEEPSIX_EXCURSION:
         rc = deepsix_excursion_parser_create(&parser, context);
         break;
 	default:

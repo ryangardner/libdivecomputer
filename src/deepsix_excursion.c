@@ -65,7 +65,7 @@ static dc_status_t deepsix_device_close (dc_device_t *abstract);
 
 static const dc_device_vtable_t deepsix_device_vtable = {
 		sizeof(deepsix_device_t),
-		DC_FAMILY_DEEPSIX,
+		DC_FAMILY_DEEPSIX_EXCURSION,
 		deepsix_excursion_device_set_fingerprint, /* set_fingerprint */
 		NULL, /* read */
 		NULL, /* write */

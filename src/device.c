@@ -224,7 +224,7 @@ dc_device_open (dc_device_t **out, dc_context_t *context, dc_descriptor_t *descr
 	case DC_FAMILY_SPORASUB_SP2:
 		rc = sporasub_sp2_device_open (&device, context, iostream);
 		break;
-    case DC_FAMILY_DEEPSIX:
+    case DC_FAMILY_DEEPSIX_EXCURSION:
         rc = deepsix_excursion_device_open(&device, context, iostream);
         break;
 	default:

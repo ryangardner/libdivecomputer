@@ -422,7 +422,7 @@ static const dc_descriptor_t g_descriptors[] = {
 	/* Sporasub */
 	{"Sporasub", "SP2", DC_FAMILY_SPORASUB_SP2, 0, DC_TRANSPORT_SERIAL, NULL},
 	/* DeepSix */
-	{"Deep Six", "Excursion", DC_FAMILY_DEEPSIX, 0, DC_TRANSPORT_BLE, dc_filter_deepsix },
+	{"Deep Six", "Excursion", DC_FAMILY_DEEPSIX_EXCURSION, 0, DC_TRANSPORT_BLE, dc_filter_deepsix },
 };
 
 static int

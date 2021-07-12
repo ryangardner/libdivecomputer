@@ -111,7 +111,7 @@ typedef enum dc_family_t {
 	/* Sporasub */
 	DC_FAMILY_SPORASUB_SP2 = (18 << 16),
 	/* DeepSix */
-	DC_FAMILY_DEEPSIX = (19 << 16),
+	DC_FAMILY_DEEPSIX_EXCURSION = (19 << 16),
 } dc_family_t;
 
 #ifdef __cplusplus
