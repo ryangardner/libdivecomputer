@@ -1,7 +1,7 @@
 /*
- * Deep6 Excursion parsing
+ * libdivecomputer
  *
- * Copyright (C) 2020 Ryan Gardner
+ * Copyright (C) 2020 Ryan Gardner, Jef Driesen
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,31 +24,21 @@
 #include <stdarg.h>
 #include <string.h>
 
+#include <libdivecomputer/units.h>
+
 #include "deepsix_excursion.h"
 #include "context-private.h"
 #include "parser-private.h"
 #include "array.h"
 
-#define C_ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
-
-#define MAXFIELDS 128
-
-struct msg_desc;
+#define ALARM        0x0001
+#define TEMPERATURE  0x0002
+#define DECO         0x0003
+#define CEILING      0x0004
+#define CNS          0x0005
 
 typedef struct deepsix_excursion_parser_t {
-	dc_parser_t base;
-
-	dc_sample_callback_t callback;
-	void *userdata;
-
-	int sample_interval;
-
-	char divetype;
-
-	// surface pressure
-	unsigned int surface_atm;
-	char firmware_version[6];
-
+    dc_parser_t base;
 } deepsix_excursion_parser_t;
 
 static dc_status_t deepsix_excursion_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size);
@@ -57,332 +47,221 @@ static dc_status_t deepsix_excursion_parser_get_field (dc_parser_t *abstract, dc
 static dc_status_t deepsix_excursion_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata);
 
 static const dc_parser_vtable_t deepsix_parser_vtable = {
-		sizeof(deepsix_excursion_parser_t),
-		DC_FAMILY_DEEPSIX,
-		deepsix_excursion_parser_set_data, /* set_data */
-		deepsix_excursion_parser_get_datetime, /* datetime */
-		deepsix_excursion_parser_get_field, /* fields */
-		deepsix_excursion_parser_samples_foreach, /* samples_foreach */
-		NULL /* destroy */
+        sizeof(deepsix_excursion_parser_t),
+        DC_FAMILY_DEEPSIX_EXCURSION,
+        deepsix_excursion_parser_set_data, /* set_data */
+        deepsix_excursion_parser_get_datetime, /* datetime */
+        deepsix_excursion_parser_get_field, /* fields */
+        deepsix_excursion_parser_samples_foreach, /* samples_foreach */
+        NULL /* destroy */
 };
 
 dc_status_t
 deepsix_excursion_parser_create (dc_parser_t **out, dc_context_t *context)
 {
-	deepsix_excursion_parser_t *parser = NULL;
+    deepsix_excursion_parser_t *parser = NULL;
 
-	if (out == NULL)
-		return DC_STATUS_INVALIDARGS;
+    if (out == NULL)
+        return DC_STATUS_INVALIDARGS;
 
-	// Allocate memory.
-	parser = (deepsix_excursion_parser_t *) dc_parser_allocate (context, &deepsix_parser_vtable);
-	if (parser == NULL) {
-		ERROR (context, "Failed to allocate memory.");
-		return DC_STATUS_NOMEMORY;
-	}
+    // Allocate memory.
+    parser = (deepsix_excursion_parser_t *) dc_parser_allocate (context, &deepsix_parser_vtable);
+    if (parser == NULL) {
+        ERROR (context, "Failed to allocate memory.");
+        return DC_STATUS_NOMEMORY;
+    }
 
-	*out = (dc_parser_t *) parser;
+    *out = (dc_parser_t *) parser;
 
-	return DC_STATUS_SUCCESS;
+    return DC_STATUS_SUCCESS;
 }
 
 static double
 pressure_to_depth(unsigned int mbar, unsigned int surface_pressure)
 {
-	// Specific weight of seawater (millibar to cm)
-	const double specific_weight = 1.024 * 0.980665;
+    // Specific weight of seawater (millibar to cm)
+    const double specific_weight = 1024.0 * GRAVITY;
 
-	// Absolute pressure, subtract surface pressure
-	if (mbar < surface_pressure)
-		return 0.0;
-	mbar -= surface_pressure;
-	return mbar / specific_weight / 100.0;
+    // Absolute pressure, subtract surface pressure
+    if (mbar < surface_pressure)
+        return 0.0;
+    mbar -= surface_pressure;
+    return mbar * (BAR / 1000.0) / specific_weight;
 }
 
 static dc_status_t
 deepsix_excursion_parser_set_data (dc_parser_t *abstract, const unsigned char *data, unsigned int size)
 {
-	deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
-	const unsigned char *hdr = data;
-	dc_gasmix_t gasmix = {0, };
-
-	if (size < EXCURSION_HDR_SIZE)
-		return DC_STATUS_IO;
-
-	deepsix->callback = NULL;
-	deepsix->userdata = NULL;
-
-	// dive type - scuba = 0.
-	// The use of an unsigned 32-bit integer certainly leaves them room to add a few more
-	// modes, but we can safely cast this down to a char and not feel bad since there are only
-	// four modes we care about
-	deepsix->divetype = (char) array_uint32_le(&hdr[4]);
-
-	int profile_data_len = array_uint32_le(&data[8]);
-	memcpy(&(deepsix->firmware_version), &data[48], 6);
-
-	// surface pressure
-	deepsix->surface_atm = array_uint32_le(&hdr[56]);
-	deepsix->sample_interval = array_uint32_le(&hdr[24]);
-
-	return DC_STATUS_SUCCESS;
+    return DC_STATUS_SUCCESS;
 }
 
 static dc_status_t
 deepsix_excursion_parser_get_datetime (dc_parser_t *abstract, dc_datetime_t *datetime)
 {
-	deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
-	const unsigned char *data = deepsix->base.data;
-	int len = deepsix->base.size;
+    const unsigned char *data = abstract->data;
+    unsigned int size = abstract->size;
 
-	if (len < 256)
-		return DC_STATUS_IO;
-	datetime->year = data[12] + 2000;
-	datetime->month = data[13];
-	datetime->day = data[14];
-	datetime->hour = data[15];
-	datetime->minute = data[16];
-	datetime->second = data[17];
-	datetime->timezone = DC_TIMEZONE_NONE;
+    if (size < EXCURSION_HDR_SIZE)
+        return DC_STATUS_DATAFORMAT;
 
-	return DC_STATUS_SUCCESS;
+    if (datetime) {
+        datetime->year = data[12] + 2000;
+        datetime->month = data[13];
+        datetime->day = data[14];
+        datetime->hour = data[15];
+        datetime->minute = data[16];
+        datetime->second = data[17];
+        datetime->timezone = DC_TIMEZONE_NONE;
+    }
+
+    return DC_STATUS_SUCCESS;
 }
 
 static dc_status_t
 deepsix_excursion_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigned int flags, void *value)
 {
-	deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
+    deepsix_excursion_parser_t *parser = (deepsix_excursion_parser_t *) abstract;
+    const unsigned char *data = abstract->data;
+    unsigned int size = abstract->size;
 
-	// this is on the subsurface fork but not the mainline one
-//    dc_field_string_t *string = (dc_field_string_t *) value;
+    if (size < EXCURSION_HDR_SIZE)
+        return DC_STATUS_DATAFORMAT;
 
-	char string_buf[EXCURSION_SERIAL_NUMBER_LEN + 1];
+    unsigned int atmospheric = array_uint32_le(data + 56);
 
-	if (!value)
-		return DC_STATUS_INVALIDARGS;
+    dc_salinity_t *water = (dc_salinity_t *) value;
 
-	switch (type) {
-		case DC_FIELD_DIVETIME:
-			*((unsigned int *) value) = array_uint32_le(deepsix->base.data + 20);
-			break;
-		case DC_FIELD_MAXDEPTH:
-			*((double *) value) = pressure_to_depth(array_uint32_le(deepsix->base.data + 28), deepsix->surface_atm);
-			break;
-		case DC_FIELD_TEMPERATURE_MINIMUM:
-			*((double *) value) = ((double)array_uint32_le(deepsix->base.data + 32))/10;
-			break;
-		case DC_FIELD_ATMOSPHERIC:
-			*((double *) value) = (double) deepsix->surface_atm / 1000;
-			break;
-		case DC_FIELD_DIVEMODE:
-			switch(array_uint32_le(deepsix->base.data + 4)) {
-				case 0:
-					*((dc_divemode_t *) value) = DC_DIVEMODE_OC;
-					break;
-				case 1:
-					*((dc_divemode_t *) value) = DC_DIVEMODE_GAUGE;
-					break;
-				case 2:
-					*((dc_divemode_t *) value) = DC_DIVEMODE_FREEDIVE;
-					break;
-				default:
-					return DC_STATUS_UNSUPPORTED;
-			}
-			break;
-		/* DC_FIELD_STRING is only on the subsurface branch */
-//        case DC_FIELD_STRING:
-//            switch (flags) {
-//                case 0: /* serial */
-//                    string->desc = "Serial";
-//                    snprintf(string_buf, EXCURSION_SERIAL_NUMBER_LEN + 1, "%s", deepsix->base.data + EXCURSION_HDR_SIZE);
-//                    break;
-//                case 1: /* Firmware version */
-//                    string->desc = "Firmware";
-//                    snprintf(string_buf, 7, "%s", deepsix->firmware_version);
-//                    break;
-//                default:
-//                    return DC_STATUS_UNSUPPORTED;
-//            }
-//            string->value = strdup(string_buf);
-//            break;
-		default:
-			return DC_STATUS_UNSUPPORTED;
-	}
-	return DC_STATUS_SUCCESS;
+    if (value) {
+        switch (type) {
+            case DC_FIELD_DIVETIME:
+                *((unsigned int *) value) = array_uint32_le(data + 20);
+                break;
+                case DC_FIELD_MAXDEPTH:
+                    *((double *) value) = pressure_to_depth(array_uint32_le(data + 28), atmospheric);
+                    break;
+                    break;
+                    case DC_FIELD_TEMPERATURE_MINIMUM:
+                        *((double *) value) = (signed int) array_uint32_le(data + 32) / 10.0;
+                        break;
+                        case DC_FIELD_ATMOSPHERIC:
+                            *((double *) value) = atmospheric / 1000.0;
+                            break;
+                            case DC_FIELD_SALINITY:
+                                water->type = DC_WATER_SALT;
+                                water->density = 1024.0;
+                                break;
+                                case DC_FIELD_DIVEMODE:
+                                    switch (array_uint32_le(data + 4)) {
+                                        case 0:
+                                            *((dc_divemode_t *) value) = DC_DIVEMODE_OC;
+                                            break;
+                                            case 1:
+                                                *((dc_divemode_t *) value) = DC_DIVEMODE_GAUGE;
+                                                break;
+                                                case 2:
+                                                    *((dc_divemode_t *) value) = DC_DIVEMODE_FREEDIVE;
+                                                    break;
+                                                    default:
+                                                        return DC_STATUS_DATAFORMAT;
+                                    }
+                                    break;
+                                default:
+                                    return DC_STATUS_UNSUPPORTED;
+        }
+    }
+
+    return DC_STATUS_SUCCESS;
 }
 
 static dc_status_t
 deepsix_excursion_parser_samples_foreach (dc_parser_t *abstract, dc_sample_callback_t callback, void *userdata)
 {
-	deepsix_excursion_parser_t *deepsix = (deepsix_excursion_parser_t *) abstract;
-	const unsigned char *data = deepsix->base.data;
-	int len = deepsix->base.size, i = 0;
+    deepsix_excursion_parser_t *parser = (deepsix_excursion_parser_t *) abstract;
+    const unsigned char *data = abstract->data;
+    unsigned int size = abstract->size;
 
-	deepsix->callback = callback;
-	deepsix->userdata = userdata;
+    if (size < EXCURSION_HDR_SIZE)
+        return DC_STATUS_DATAFORMAT;
 
-	// Skip the header information
-	if (len < EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN)
-		return DC_STATUS_IO;
-	data += EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN;
-	len -= EXCURSION_HDR_SIZE+EXCURSION_SERIAL_NUMBER_LEN;
+    int firmware4c = memcmp(data + 48, "D01-4C", 6) == 0;
 
-	int nonempty_sample_count = 0;
+    unsigned int maxtype = firmware4c ? TEMPERATURE : CNS;
 
-	// the older firmware is parsed differently
-	int firmware4c = memcmp(deepsix->firmware_version, "D01-4C", 6);
-	while (i < len) {
-		dc_sample_value_t sample = {0};
-		char point_type = data[0];
-		int near_end_of_data = (len - i <= 8);
+    unsigned int interval = array_uint32_le(data + 24);
+    unsigned int atmospheric = array_uint32_le(data + 56);
 
-		if (firmware4c == 0) {
-			if (point_type != 1) {
-				if (point_type != 2) {
-					if (near_end_of_data) {
-						break;
-					} else {
-						i++;
-						data++;
-						continue;;
-					}
-				}
-				unsigned int pressure = array_uint16_le(data + 2);
-				unsigned int something_else = array_uint16_le(data + 4);
+    unsigned int time = 0;
+    unsigned int offset = EXCURSION_HDR_SIZE;
+    while (offset + 1 < size) {
+        dc_sample_value_t sample = {0};
 
-				sample.time = (nonempty_sample_count) * deepsix->sample_interval;
-				if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
+        // Get the sample type.
+        unsigned int type = data[offset];
+        if (type < 1 || type > maxtype) {
+            ERROR (abstract->context, "Unknown sample type (%u).", type);
+            return DC_STATUS_DATAFORMAT;
+        }
 
-				sample.depth = pressure_to_depth(pressure, deepsix->surface_atm);
-				if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
-				nonempty_sample_count++;
+        // Get the sample length.
+        unsigned int length = 1;
+        if (type == ALARM || type == CEILING) {
+            length = 8;
+        } else if (type == TEMPERATURE || type == DECO || type == CNS) {
+            length = 6;
+        }
 
-				if (something_else > 1300) {
-					if (near_end_of_data) {
-						break;
-					}
-					if (data[8] > 0 && data[8] < 3) {
-						i += 8;
-						data += 8;
-						continue;
-					}
-				} else {
-					if (something_else >= 10) {
-						sample.temperature = something_else / 10.0;
-						if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
-					}
-					if (near_end_of_data) {
-						break;
-					} else {
-						i += 6;
-						data += 6;
-						if (data[0] <= 0 || data[0] >= 3) {
-							i += 1;
-							data += 1;
-						}
-					}
-					continue;
-				}
-			} else {
-				if (near_end_of_data) {
-					break;
-				}
-				if (data[8] > 0 && data[8] < 3) {
-					data += 8;
-					i += 8;
-					continue;
-				}
-			}
-			data+=1;
-			i+=1;
-		}
-		else {
-			if (point_type == 2) {
-				sample.time = (nonempty_sample_count) * deepsix->sample_interval;
-				if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
+        // Verify the length.
+        if (offset + length > size) {
+            WARNING (abstract->context, "Unexpected end of data.");
+            break;
+        }
 
-				unsigned int pressure = array_uint16_le(data + 2);
-				unsigned int temp = array_uint16_le(data + 4);
+        unsigned int misc = data[offset + 1];
+        unsigned int depth = array_uint16_le(data + offset + 2);
 
-				sample.depth = pressure_to_depth(pressure, deepsix->surface_atm);
-				if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
 
-				sample.temperature = temp / 10.0;
-				if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
-				nonempty_sample_count++;
-				if (data[6] <= 0 || data[6] >= 5) {
-					data += 1;
-					i++;
-				} else {
-					i += 6;
-					data += 6;
-				}
+        if (type == TEMPERATURE) {
+            time += interval;
+            sample.time = time;
+            if (callback) callback(DC_SAMPLE_TIME, sample, userdata);
 
-				continue;
-			}
-			// not sure what this point type indicates, but the phone app skips 8 bytes for it
-			if (point_type == 1) {
-				if (data[8] <= 0 || data[8] >= 5) {
-					data += 1;
-					i++;
-				} else {
-					i += 8;
-					data += 8;
-				}
-				continue;
-			}
-//            if (point_type == 3) {
-//                i += 6;
-//                data += 4;
-//
-//                if (data[6] <= 0 || data[6] >= 5) {
-//                    data += 1;
-//                    i++;
-//                } else {
-//                    i += 6;
-//                    data += 6;
-//                }
-//                continue;
-//            }
-			if (point_type != 3) {
-				if (point_type != 4) {
-					if (near_end_of_data) {
-						break;
-					} else {
-						i++;
-						data++;
-						continue;
-					}
-				}
-				if (point_type == 4) {
-					if (near_end_of_data) {
-						break;
-					} else {
-						i += 8;
-						data += 8;
-						if (data[i] > 0 && data[i] < 5) {
-							continue;;
-						}
-					}
-				}
-			}
-			else {
-				if (near_end_of_data) {
-					break;
-				}
-				else {
-					i += 6;
-					data += 6;
-					if (data[6] > 0 && data[6] < 5) {
-						continue;
-					}
-				}
-			}
-			data++;
-			i++;
-		}
+            sample.depth = pressure_to_depth(depth, atmospheric);
+            if (callback) callback(DC_SAMPLE_DEPTH, sample, userdata);
+        }
 
-	}
+        if (type == ALARM) {
+            unsigned int timestamp = array_uint16_le(data + offset + 4);
+            unsigned int value     = array_uint16_le(data + offset + 6);
+        } else if (type == TEMPERATURE) {
+            unsigned int temperature = array_uint16_le(data + offset + 4);
+            if (firmware4c) {
+                if (temperature > 1300) {
+                    length = 8;
+                } else if (temperature >= 10) {
+                    sample.temperature = temperature / 10.0;
+                    if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+                }
+            } else {
+                sample.temperature = temperature / 10.0;
+                if (callback) callback(DC_SAMPLE_TEMPERATURE, sample, userdata);
+            }
+        } else if (type == DECO) {
+            unsigned int state = array_uint16_le(data + offset + 4);
+        } else if (type == CEILING) {
+            unsigned int decodepth = array_uint16_le(data + offset + 4);
+            unsigned int decotime  = array_uint16_le(data + offset + 6);
+            sample.deco.type = DC_DECO_DECOSTOP;
+            sample.deco.depth = pressure_to_depth(decodepth, atmospheric);
+            sample.deco.time = decotime;
+            if (callback) callback(DC_SAMPLE_DECO, sample, userdata);
+        } else if (type == CNS) {
+            unsigned int cns = array_uint16_le(data + offset + 4);
+            sample.cns = cns;
+            if (callback) callback(DC_SAMPLE_CNS, sample, userdata);
+        }
 
-	return DC_STATUS_SUCCESS;
+        offset += length;
+    }
+
+    return DC_STATUS_SUCCESS;
 }
