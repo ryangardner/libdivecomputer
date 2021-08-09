@@ -447,6 +447,9 @@ device_event_emit (dc_device_t *device, dc_event_type_t event, const void *data)
 	case DC_EVENT_CLOCK:
 		assert (data != NULL);
 		break;
+	case DC_FAMILY_DEEPSIX_EXCURSION:
+		rc = deepsix_excursion_device_open (&device, context, iostream);
+		break;
 	default:
 		break;
 	}

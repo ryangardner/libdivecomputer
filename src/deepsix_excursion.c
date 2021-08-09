@@ -1,7 +1,7 @@
 /*
  * libdivecomputer
  *
- * Copyright (C) 2020 Ryan Gardner
+ * Copyright (C) 2021 Ryan Gardner, Jef Driesen
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -32,51 +32,50 @@
 
 #define MAXPACKET 255
 
+#define HEADERSIZE 156
+
 #define NSTEPS    1000
 #define STEP(i,n) (NSTEPS * (i) / (n))
 
 #define FP_SIZE   6
 #define FP_OFFSET 12
 
-#define CMD_GROUP_LOGS     0xC0 // get the logs
+#define GRP_INFO           0xA0
+#define CMD_INFO_SERIAL    0x03
+#define CMD_INFO_LASTDIVE  0x04
 
-#define CMD_GROUP_INFO                   0xA0 // info command group
-#define COMMAND_INFO_LAST_DIVE_LOG_INDEX 0x04 // get the index of the last dive
-#define COMMAND_INFO_SERIAL_NUMBER       0x03 // get the serial number
+#define GRP_SETTINGS       0xB0
+#define CMD_SETTINGS_DATE  0x01
+#define CMD_SETTINGS_TIME  0x03
 
-#define CMD_GROUP_SETTINGS  0xB0 // settings
-#define CMD_SETTING_DATE    0x01 // date setting
-#define CMD_SETTING_TIME    0x03 // time setting
+#define GRP_DIVE           0xC0
+#define CMD_DIVE_HEADER    0x02
+#define CMD_DIVE_PROFILE   0x03
 
-// sub commands for the log
-#define LOG_INFO    0x02
-#define LOG_PROFILE 0x03 // the sub command for the dive profile info
-
-typedef struct deepsix_device_t {
+typedef struct deepsix_excursion_device_t {
 	dc_device_t base;
 	dc_iostream_t *iostream;
 	unsigned char fingerprint[FP_SIZE];
-} deepsix_device_t;
+} deepsix_excursion_device_t;
 
 static dc_status_t deepsix_excursion_device_set_fingerprint (dc_device_t *abstract, const unsigned char *data, unsigned int size);
 static dc_status_t deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void *userdata);
 static dc_status_t deepsix_excursion_device_timesync(dc_device_t *abstract, const dc_datetime_t *datetime);
-static dc_status_t deepsix_device_close (dc_device_t *abstract);
 
-static const dc_device_vtable_t deepsix_device_vtable = {
-		sizeof(deepsix_device_t),
-		DC_FAMILY_DEEPSIX_EXCURSION,
-		deepsix_excursion_device_set_fingerprint, /* set_fingerprint */
-		NULL, /* read */
-		NULL, /* write */
-		NULL, /* dump */
-		deepsix_excursion_device_foreach, /* foreach */
-		deepsix_excursion_device_timesync, /* timesync */
-		deepsix_device_close, /* close */
+static const dc_device_vtable_t deepsix_excursion_device_vtable = {
+	sizeof(deepsix_excursion_device_t),
+	DC_FAMILY_DEEPSIX_EXCURSION,
+	deepsix_excursion_device_set_fingerprint, /* set_fingerprint */
+	NULL, /* read */
+	NULL, /* write */
+	NULL, /* dump */
+	deepsix_excursion_device_foreach, /* foreach */
+	deepsix_excursion_device_timesync, /* timesync */
+	NULL, /* close */
 };
 
 static dc_status_t
-deepsix_excursion_send (deepsix_device_t *device, unsigned char cmd, unsigned char subcmd, const unsigned char data[], unsigned int size)
+deepsix_excursion_send (deepsix_excursion_device_t *device, unsigned char grp, unsigned char cmd, const unsigned char data[], unsigned int size)
 {
 	dc_status_t status = DC_STATUS_SUCCESS;
 	dc_device_t *abstract = (dc_device_t *) device;
@@ -89,8 +88,8 @@ deepsix_excursion_send (deepsix_device_t *device, unsigned char cmd, unsigned ch
 		return DC_STATUS_INVALIDARGS;
 
 	// Setup the data packet
-	packet[0] = cmd;
-	packet[1] = subcmd;
+	packet[0] = grp;
+	packet[1] = cmd;
 	packet[2] = 0x01;
 	packet[3] = size;
 	if (size) {
@@ -109,7 +108,7 @@ deepsix_excursion_send (deepsix_device_t *device, unsigned char cmd, unsigned ch
 }
 
 static dc_status_t
-deepsix_excursion_recv (deepsix_device_t *device, unsigned char cmd, unsigned char subcmd, unsigned char data[], unsigned int size, unsigned int *actual)
+deepsix_excursion_recv (deepsix_excursion_device_t *device, unsigned char grp, unsigned char cmd, unsigned char data[], unsigned int size, unsigned int *actual)
 {
 	dc_status_t status = DC_STATUS_SUCCESS;
 	dc_device_t *abstract = (dc_device_t *) device;
@@ -128,7 +127,7 @@ deepsix_excursion_recv (deepsix_device_t *device, unsigned char cmd, unsigned ch
 		return DC_STATUS_PROTOCOL;
 	}
 
-	if (packet[0] != cmd /*|| packet[1] != subcmd*/ || packet[2] != 0x01) {
+	if (packet[0] != grp /*|| packet[1] != cmd*/ || packet[2] != 0x01) {
 		ERROR (device->base.context, "Unexpected packet header.");
 		return DC_STATUS_PROTOCOL;
 	}
@@ -172,35 +171,100 @@ deepsix_excursion_recv (deepsix_device_t *device, unsigned char cmd, unsigned ch
 }
 
 static dc_status_t
-deepsix_excursion_transfer (deepsix_device_t *device, unsigned char cmd, unsigned char subcmd, const unsigned char command[], unsigned int csize, unsigned char answer[], unsigned int asize, unsigned int *actual)
+deepsix_excursion_transfer (deepsix_excursion_device_t *device, unsigned char grp, unsigned char cmd, const unsigned char command[], unsigned int csize, unsigned char answer[], unsigned int asize, unsigned int *actual)
 {
 	dc_status_t status = DC_STATUS_SUCCESS;
 
-	status = deepsix_excursion_send (device, cmd, subcmd, command, csize);
+	status = deepsix_excursion_send (device, grp, cmd, command, csize);
 	if (status != DC_STATUS_SUCCESS)
 		return status;
 
-	status = deepsix_excursion_recv (device, cmd + 1, subcmd, answer, asize, actual);
+	status = deepsix_excursion_recv (device, grp + 1, cmd, answer, asize, actual);
 	if (status != DC_STATUS_SUCCESS)
 		return status;
 
 	return status;
 }
 
+dc_status_t
+deepsix_excursion_device_open (dc_device_t **out, dc_context_t *context, dc_iostream_t *iostream)
+{
+	dc_status_t status = DC_STATUS_SUCCESS;
+	deepsix_excursion_device_t *device = NULL;
+
+	if (out == NULL)
+		return DC_STATUS_INVALIDARGS;
+
+	// Allocate memory.
+	device = (deepsix_excursion_device_t *) dc_device_allocate (context, &deepsix_excursion_device_vtable);
+	if (device == NULL) {
+		ERROR (context, "Failed to allocate memory.");
+		return DC_STATUS_NOMEMORY;
+	}
+
+	// Set the default values.
+	device->iostream = iostream;
+	memset(device->fingerprint, 0, sizeof(device->fingerprint));
+
+	// Set the serial communication protocol (115200 8N1).
+	status = dc_iostream_configure (device->iostream, 115200, 8, DC_PARITY_NONE, DC_STOPBITS_ONE, DC_FLOWCONTROL_NONE);
+	if (status != DC_STATUS_SUCCESS) {
+		ERROR (context, "Failed to set the terminal attributes.");
+		goto error_free;
+	}
+
+	// Set the timeout for receiving data (1000ms).
+	status = dc_iostream_set_timeout (device->iostream, 1000);
+	if (status != DC_STATUS_SUCCESS) {
+		ERROR (context, "Failed to set the timeout.");
+		goto error_free;
+	}
+
+	// Make sure everything is in a sane state.
+	dc_iostream_sleep (device->iostream, 300);
+	dc_iostream_purge (device->iostream, DC_DIRECTION_ALL);
+
+	*out = (dc_device_t *) device;
+
+	return DC_STATUS_SUCCESS;
+
+error_free:
+	dc_device_deallocate ((dc_device_t *) device);
+	return status;
+}
+
+static dc_status_t
+deepsix_excursion_device_set_fingerprint (dc_device_t *abstract, const unsigned char *data, unsigned int size)
+{
+	deepsix_excursion_device_t *device = (deepsix_excursion_device_t *)abstract;
+
+	if (size && size != sizeof (device->fingerprint))
+		return DC_STATUS_INVALIDARGS;
+
+	if (size)
+		memcpy (device->fingerprint, data, sizeof (device->fingerprint));
+	else
+		memset (device->fingerprint, 0, sizeof (device->fingerprint));
+
+	return DC_STATUS_SUCCESS;
+}
+
 static dc_status_t
 deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t callback, void *userdata)
 {
 	dc_status_t status = DC_STATUS_SUCCESS;
-	deepsix_device_t *device = (deepsix_device_t *) abstract;
+	deepsix_excursion_device_t *device = (deepsix_excursion_device_t *) abstract;
 
 	// Enable progress notifications.
 	dc_event_progress_t progress = EVENT_PROGRESS_INITIALIZER;
 	device_event_emit (abstract, DC_EVENT_PROGRESS, &progress);
 
 	unsigned char rsp_serial[12] = {0};
-	status = deepsix_excursion_transfer (device, CMD_GROUP_INFO, COMMAND_INFO_SERIAL_NUMBER, NULL, 0, rsp_serial, sizeof(rsp_serial), NULL);
-	if (status != DC_STATUS_SUCCESS)
+	status = deepsix_excursion_transfer (device, GRP_INFO, CMD_INFO_SERIAL, NULL, 0, rsp_serial, sizeof(rsp_serial), NULL);
+	if (status != DC_STATUS_SUCCESS) {
+		ERROR (abstract->context, "Failed to read the serial number.");
 		return status;
+	}
 
 	// Emit a device info event.
 	dc_event_devinfo_t devinfo;
@@ -211,9 +275,11 @@ deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t call
 
 	const unsigned char cmd_index[2] = {0};
 	unsigned char rsp_index[2] = {0};
-	status = deepsix_excursion_transfer (device, CMD_GROUP_INFO, COMMAND_INFO_LAST_DIVE_LOG_INDEX, cmd_index, sizeof(cmd_index), rsp_index, sizeof(rsp_index), NULL);
-	if (status != DC_STATUS_SUCCESS)
+	status = deepsix_excursion_transfer (device, GRP_INFO, CMD_INFO_LASTDIVE, cmd_index, sizeof(cmd_index), rsp_index, sizeof(rsp_index), NULL);
+	if (status != DC_STATUS_SUCCESS) {
+		ERROR (abstract->context, "Failed to read the last dive index.");
 		return status;
+	}
 
 	// Calculate the number of dives.
 	unsigned int ndives = array_uint16_le (rsp_index);
@@ -224,6 +290,7 @@ deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t call
 
 	dc_buffer_t *buffer = dc_buffer_new(0);
 	if (buffer == NULL) {
+		ERROR (abstract->context, "Insufficient buffer space available.");
 		return DC_STATUS_NOMEMORY;
 	}
 
@@ -231,13 +298,13 @@ deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t call
 		unsigned int number = ndives - i;
 
 		const unsigned char cmd_header[] = {
-				(number     ) & 0xFF,
-				(number >> 8) & 0xFF};
-		unsigned char rsp_header[EXCURSION_HDR_SIZE] = {0};
-		status = deepsix_excursion_transfer (device, CMD_GROUP_LOGS, LOG_INFO, cmd_header, sizeof(cmd_header), rsp_header, sizeof(rsp_header), NULL);
+			(number     ) & 0xFF,
+			(number >> 8) & 0xFF};
+		unsigned char rsp_header[HEADERSIZE] = {0};
+		status = deepsix_excursion_transfer (device, GRP_DIVE, CMD_DIVE_HEADER, cmd_header, sizeof(cmd_header), rsp_header, sizeof(rsp_header), NULL);
 		if (status != DC_STATUS_SUCCESS) {
-			dc_buffer_free (buffer);
-			return status;
+			ERROR (abstract->context, "Failed to read the dive header.");
+			goto error_free;
 		}
 
 		if (memcmp(rsp_header + FP_OFFSET, device->fingerprint, sizeof(device->fingerprint)) == 0)
@@ -254,25 +321,25 @@ deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t call
 
 		if (!dc_buffer_append(buffer, rsp_header, sizeof(rsp_header))) {
 			ERROR (abstract->context, "Insufficient buffer space available.");
-			dc_buffer_free(buffer);
-			return DC_STATUS_NOMEMORY;
+			status = DC_STATUS_NOMEMORY;
+			goto error_free;
 		}
 
 		unsigned offset = 0;
 		while (offset < length) {
 			unsigned int len = 0;
 			const unsigned char cmd_profile[] = {
-					(number     ) & 0xFF,
-					(number >> 8) & 0xFF,
-					(offset      ) & 0xFF,
-					(offset >>  8) & 0xFF,
-					(offset >> 16) & 0xFF,
-					(offset >> 24) & 0xFF};
+				(number      ) & 0xFF,
+				(number >>  8) & 0xFF,
+				(offset      ) & 0xFF,
+				(offset >>  8) & 0xFF,
+				(offset >> 16) & 0xFF,
+				(offset >> 24) & 0xFF};
 			unsigned char rsp_profile[MAXPACKET] = {0};
-			status = deepsix_excursion_transfer (device, CMD_GROUP_LOGS, LOG_PROFILE, cmd_profile, sizeof(cmd_profile), rsp_profile, sizeof(rsp_profile), &len);
+			status = deepsix_excursion_transfer (device, GRP_DIVE, CMD_DIVE_PROFILE, cmd_profile, sizeof(cmd_profile), rsp_profile, sizeof(rsp_profile), &len);
 			if (status != DC_STATUS_SUCCESS) {
-				dc_buffer_free (buffer);
-				return status;
+				ERROR (abstract->context, "Failed to read the dive profile.");
+				goto error_free;
 			}
 
 			unsigned int n = len;
@@ -286,8 +353,8 @@ deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t call
 
 			if (!dc_buffer_append(buffer, rsp_profile, n)) {
 				ERROR (abstract->context, "Insufficient buffer space available.");
-				dc_buffer_free(buffer);
-				return DC_STATUS_NOMEMORY;
+				status = DC_STATUS_NOMEMORY;
+				goto error_free;
 			}
 
 			offset += n;
@@ -295,27 +362,21 @@ deepsix_excursion_device_foreach (dc_device_t *abstract, dc_dive_callback_t call
 
 		unsigned char *data = dc_buffer_get_data(buffer);
 		unsigned int   size = dc_buffer_get_size(buffer);
-
-		char divedata[25];
-		sprintf(divedata, "divenumber=%d", i);
-		HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, divedata, (const unsigned char *) data, size);
-
 		if (callback && !callback (data, size, data + FP_OFFSET, sizeof(device->fingerprint), userdata)) {
-			dc_buffer_free (buffer);
-			return DC_STATUS_SUCCESS;
+			break;
 		}
 	}
 
+error_free:
 	dc_buffer_free(buffer);
-
-	return DC_STATUS_SUCCESS;
+	return status;
 }
 
 static dc_status_t
 deepsix_excursion_device_timesync (dc_device_t *abstract, const dc_datetime_t *datetime)
 {
 	dc_status_t status = DC_STATUS_SUCCESS;
-	deepsix_device_t *device = (deepsix_device_t *) abstract;
+	deepsix_excursion_device_t *device = (deepsix_excursion_device_t *) abstract;
 
 	if (datetime == NULL || datetime->year < 2000) {
 		ERROR (abstract->context, "Invalid date/time value specified.");
@@ -323,94 +384,26 @@ deepsix_excursion_device_timesync (dc_device_t *abstract, const dc_datetime_t *d
 	}
 
 	const unsigned char cmd_date[] = {
-			datetime->year - 2000,
-			datetime->month,
-			datetime->day};
+		datetime->year - 2000,
+		datetime->month,
+		datetime->day};
 
 	const unsigned char cmd_time[] = {
-			datetime->hour,
-			datetime->minute,
-			datetime->second};
+		datetime->hour,
+		datetime->minute,
+		datetime->second};
 
-	status = deepsix_excursion_send (device, CMD_GROUP_SETTINGS, CMD_SETTING_DATE, cmd_date, sizeof(cmd_date));
+	status = deepsix_excursion_send (device, GRP_SETTINGS, CMD_SETTINGS_DATE, cmd_date, sizeof(cmd_date));
 	if (status != DC_STATUS_SUCCESS) {
+		ERROR (abstract->context, "Failed to set the date.");
 		return status;
 	}
 
-	status = deepsix_excursion_send (device, CMD_GROUP_SETTINGS, CMD_SETTING_TIME, cmd_time, sizeof(cmd_time));
+	status = deepsix_excursion_send (device, GRP_SETTINGS, CMD_SETTINGS_TIME, cmd_time, sizeof(cmd_time));
 	if (status != DC_STATUS_SUCCESS) {
+		ERROR (abstract->context, "Failed to set the time.");
 		return status;
 	}
 
 	return status;
-}
-
-dc_status_t
-deepsix_excursion_device_open (dc_device_t **out, dc_context_t *context, dc_iostream_t *iostream)
-{
-	dc_status_t status = DC_STATUS_SUCCESS;
-	deepsix_device_t *device = NULL;
-
-	if (out == NULL)
-		return DC_STATUS_INVALIDARGS;
-
-	// Allocate memory.
-	device = (deepsix_device_t *) dc_device_allocate (context, &deepsix_device_vtable);
-	if (device == NULL) {
-		ERROR (context, "Failed to allocate memory.");
-		return DC_STATUS_NOMEMORY;
-	}
-
-	// Set the default values.
-	device->iostream = iostream;
-	memset(device->fingerprint, 0, sizeof(device->fingerprint));
-
-	// Set the serial communication protocol (115200 8N1).
-	status = dc_iostream_configure (device->iostream, 115200, 8, DC_PARITY_NONE, DC_STOPBITS_ONE, DC_FLOWCONTROL_NONE);
-	if (status != DC_STATUS_SUCCESS) {
-		ERROR (context, "Failed to set the terminal attributes.");
-		//goto error_free;
-	}
-
-	// Set the timeout for receiving data (1000ms).
-	status = dc_iostream_set_timeout (device->iostream, 1000);
-	if (status != DC_STATUS_SUCCESS) {
-		ERROR (context, "Failed to set the timeout.");
-		//goto error_free;
-	}
-
-	// Make sure everything is in a sane state.
-	dc_iostream_sleep (device->iostream, 300);
-	dc_iostream_purge (device->iostream, DC_DIRECTION_ALL);
-
-	*out = (dc_device_t *) device;
-
-	return DC_STATUS_SUCCESS;
-}
-
-static dc_status_t
-deepsix_excursion_device_set_fingerprint (dc_device_t *abstract, const unsigned char *data, unsigned int size)
-{
-	deepsix_device_t *device = (deepsix_device_t *)abstract;
-
-	HEXDUMP(device->base.context, DC_LOGLEVEL_DEBUG, "set_fingerprint", data, size);
-
-	if (size && size != sizeof (device->fingerprint))
-		return DC_STATUS_INVALIDARGS;
-
-	if (size)
-		memcpy (device->fingerprint, data, sizeof (device->fingerprint));
-	else
-		memset (device->fingerprint, 0, sizeof (device->fingerprint));
-
-	return DC_STATUS_SUCCESS;
-}
-
-
-static dc_status_t
-deepsix_device_close (dc_device_t *abstract)
-{
-	deepsix_device_t *device = (deepsix_device_t *) abstract;
-
-	return DC_STATUS_SUCCESS;
 }

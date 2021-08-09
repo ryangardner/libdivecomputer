@@ -1,7 +1,7 @@
 /*
- * Deep6 Excursion downloading/parsing
+ * libdivecomputer
  *
- * Copyright (C) 2021 Ryan Gardner
+ * Copyright (C) 2021 Ryan Gardner, Jef Driesen
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -19,8 +19,8 @@
  * MA 02110-1301 USA
  *
  */
-#ifndef LIBDC_DEEPSIX_H
-#define LIBDC_DEEPSIX_H
+#ifndef DEEPSIX_EXCURSION_H
+#define DEEPSIX_EXCURSION_H
 
 #include <libdivecomputer/context.h>
 #include <libdivecomputer/iostream.h>
@@ -37,10 +37,7 @@ deepsix_excursion_device_open (dc_device_t **out, dc_context_t *context, dc_iost
 dc_status_t
 deepsix_excursion_parser_create (dc_parser_t **parser, dc_context_t *context);
 
-#define EXCURSION_HDR_SIZE	156
-#define EXCURSION_SERIAL_NUMBER_LEN 11
-
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
-#endif //LIBDC_DEEPSIX_H
+#endif /* DEEPSIX_EXCURSION_H */

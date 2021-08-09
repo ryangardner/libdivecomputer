@@ -351,6 +351,9 @@ sample_statistics_cb (dc_sample_type_t type, dc_sample_value_t value, void *user
 		if (statistics->maxdepth < value.depth)
 			statistics->maxdepth = value.depth;
 		break;
+	case DC_FAMILY_DEEPSIX_EXCURSION:
+		rc = deepsix_excursion_parser_create (&parser, context);
+		break;
 	default:
 		break;
 	}
